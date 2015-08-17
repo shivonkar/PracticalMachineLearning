@@ -1,0 +1,105 @@
+---
+title: "PracticalMachineLearning_Proj1"
+author: "Shiv"
+date: "Monday, August 17, 2015"
+output: html_document
+---
+
+```{r}
+
+setwd("D:/Projects/Analytics/CourseEra/DataScience/08_PracticalMachineLearning/Proj1")
+
+# Required libraries
+library(caret)
+library(kernlab)
+library(AppliedPredictiveModeling)
+library(ggplot2)
+library(corrplot)
+
+# Read and analyse training and Test data
+Data <- read.csv("pml-training.csv", header = T, na.strings= c("NA",""," "))
+str(Data, list.len=1000)
+head(Data)
+nrow(Data)
+names(Data)
+
+# Read and analyse validation data
+Data_Validation <- read.csv("pml-testing.csv", header = T, na.strings= c("NA",""," "))
+
+#Clean the data - Start with Fatcor column
+
+#First view Factor column only
+nums <- sapply(Data, is.factor)
+str(Data[ , nums], list.len=1000)
+
+# After Analysis folloing column need to be discarded
+Col_to_be_removed <- c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp","new_window","kurtosis_yaw_belt","amplitude_yaw_belt","amplitude_yaw_forearm","skewness_yaw_forearm","kurtosis_yaw_forearm","amplitude_yaw_dumbbell","skewness_yaw_dumbbell","var_total_accel_belt","kurtosis_yaw_dumbbell","skewness_yaw_belt")
+
+#Clean the data frame
+Data <- Data[,!(names(Data) %in% Col_to_be_removed)]
+Data_Validation <- Data_Validation[,!(names(Data_Validation) %in% Col_to_be_removed)]
+
+# clean the data by removing columns with NAs etc
+NA_sum <- apply(Data, 2, function(x) {sum(is.na(x))})
+Data <- Data[,which(NA_sum == 0)]
+
+NA_sum <- apply(Data_Validation, 2, function(x) {sum(is.na(x))})
+Data_Validation <- Data_Validation[,which(NA_sum == 0)]
+
+#Should be TRUE
+ncol(Data) == ncol(Data_Validation)
+
+# plot a correlation matrix
+corMat <- cor(Data[, -length(Data)])
+corrplot(corMat, order = "FPC", method = "circle", type = "lower", tl.cex = 0.8,  tl.col = rgb(0, 0, 0))
+
+#start preparing Training and Test data set. Training is 70%
+inTrain = createDataPartition(Data$classe, p = 0.7)[[1]]
+training = Data[ inTrain,]
+testing = Data[-inTrain,]
+
+# Since there are many variables and hence preprocess the data with PCA to identify most imnpacting variables
+preProc <- preProcess(training[,-length(training)],method="pca") # ,pcaComp =3
+
+# Use above to process training training data
+trainPC <- predict(preProc,training[,-length(training)])
+
+# Training the prediction alogorithum. We are using  RF becuse variables are mixed nature an dprediction is categorical data
+modelFit <- train(training$classe ~ .,method="rf",data=trainPC) # trControl = trainControl(method = "cv", number = 4), importance = TRUE
+
+#Visulaisation
+varImpPlot(modelFit$finalModel, sort = TRUE,  pch = 19, col = 1, cex = 1, main = "Importance of Principal Components") # type = 1,
+
+# Use above to process training test data
+testPC <- predict(preProc,testing[,-length(testing)])
+
+# Predict with test data
+predTest <- predict(modelFit,testPC)
+
+#Generate the confusion matrix to see the fit
+con_mat <- confusionMatrix(testing$classe,predTest)
+con_mat
+# Accuracy. It's value is 0.9785896 which is very good fit may look like overfit
+con_mat$overall[1]
+
+# Do the cross Validation with final test data
+validPC <- predict(preProc,Data_Validation[,-length(Data_Validation)])
+predValid <- predict(modelFit,validPC)
+#confusionMatrix(Data_Validation$classe,predValid)
+predValid
+
+#Genrate the output as per coursera guidelines
+answers = as.vector(predValid)
+ 
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+ 
+pml_write_files(answers)
+
+
+```
